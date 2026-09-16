@@ -75,20 +75,24 @@ function scanParameter(state, socketId, planetId, paramKey) {
     return true;
 }
 
-// 🆕 ИСПРАВЛЕНИЕ: Голосование начинается ТОЛЬКО когда у ВСЕХ игроков ВСЕХ команд < 15
+// 🆕 ИСПРАВЛЕНИЕ Проблема 1: Голосование начинается ТОЛЬКО когда у ВСЕХ игроков energy < 15
 function checkEnergyForVoting(state) {
     if (state.votingStarted) return;
 
     const allPlayers = Object.values(state.players);
-    if (allPlayers.length === 0) return;
+    // Фильтруем только активных игроков (не отключившихся)
+    const activePlayers = allPlayers.filter(function(p) { return p.status !== '❌ Отключен'; });
+    
+    if (activePlayers.length === 0) return;
 
-    const allLow = allPlayers.every(function(p) { return p.energy < 15; });
+    // Проверяем, что у ВСЕХ активных игроков энергия < 15
+    const allLow = activePlayers.every(function(p) { return p.energy < 15; });
 
     if (allLow) {
         state.votingStarted = true;
 
-        // Меняем статус всем
-        allPlayers.forEach(function(p) {
+        // Меняем статус всем активным игрокам
+        activePlayers.forEach(function(p) {
             p.status = 'Голосует';
         });
 

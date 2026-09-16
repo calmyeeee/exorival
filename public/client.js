@@ -359,7 +359,12 @@ window.submitName = function() {
     if (!input) return;
     const name = input.value.trim();
     if (name.length > 0) {
-        socket.emit('action', { type: 'SET_NAME', name: name });
+        // Проблема 4: XSS-защита - экранирование имени на клиенте перед отправкой
+        const safeName = name.replace(/[<>"'&]/g, function(char) {
+            var entities = {'<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;'};
+            return entities[char];
+        });
+        socket.emit('action', { type: 'SET_NAME', name: safeName });
         myNameSubmitted = true;
         input.disabled = true;
         const btn = document.querySelector('#ui-name button');
@@ -374,7 +379,12 @@ window.pickRole = function(teamId, role) {
 window.promptRenameTeam = function(teamId) {
     const newName = prompt('Введите новое название лаборатории:');
     if (newName && newName.trim().length > 0) {
-        socket.emit('action', { type: 'RENAME_TEAM', teamId: teamId, newName: newName.trim() });
+        // Проблема 4: XSS-защита для названия команды
+        const safeName = newName.trim().replace(/[<>"'&]/g, function(char) {
+            var entities = {'<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;'};
+            return entities[char];
+        });
+        socket.emit('action', { type: 'RENAME_TEAM', teamId: teamId, newName: safeName });
     }
 };
 

@@ -42,12 +42,28 @@ class GameRoom {
     }
 
     removeSocket(socketId) {
-        this.sockets.delete(socketId);
+        const wasPlayer = !!this.state.players[socketId];
+        const wasMaster = !!this.state.masters[socketId];
+        
         if (this.state.masters[socketId]) delete this.state.masters[socketId];
         if (this.state.players[socketId]) delete this.state.players[socketId];
 
         const totalConnections = Object.keys(this.state.players).length + Object.keys(this.state.masters).length;
         if (totalConnections === 0) this.reset();
+        
+        // Проблема 2: Обработка отключения игрока в середине игры
+        if (wasPlayer && this.state.phase !== 'WAITING' && this.state.phase !== 'PHASE_1_ROLES') {
+            console.log('Игрок отключился во время игры, помечаем как "Отключен"');
+            // Восстанавливаем запись для отображения статуса
+            this.state.players[socketId] = {
+                name: 'Отключившийся игрок',
+                team: null,
+                role: null,
+                energy: 0,
+                science: 0,
+                status: '❌ Отключен'
+            };
+        }
     }
 
     reset() {
@@ -140,11 +156,26 @@ class GameRoom {
         return true;
     }
 
+    // Проблема 3: Валидация имён
+    validatePlayerName(name) {
+        if (!name || typeof name !== 'string') return false;
+        const trimmed = name.trim();
+        if (trimmed.length < 2 || trimmed.length > 20) return false;
+        // Разрешаем только буквы, цифры, пробелы и базовые символы
+        const validPattern = /^[a-zA-Zа-яА-ЯЁё0-9\s_-]+$/;
+        return validPattern.test(trimmed);
+    }
+
     handlePlayerAction(socketId, msg) {
         if (this.state.phase === 'PHASE_1_ROLES') {
             if (msg.type === 'SET_NAME') {
                 if (this.state.players[socketId]) {
-                    this.state.players[socketId].name = msg.name.substring(0, 20);
+                    // Проблема 3: Валидация имени перед сохранением
+                    if (!this.validatePlayerName(msg.name)) {
+                        this.sockets.get(socketId).emit('error_msg', 'Некорректное имя. Используйте 2-20 символов (буквы, цифры, пробелы, _ -)');
+                        return;
+                    }
+                    this.state.players[socketId].name = msg.name.trim().substring(0, 20);
                     this.state.players[socketId].status = 'Готов';
                     const players = Object.values(this.state.players);
                     if (players.length >= this.state.requiredPlayers && players.every(function(p) { return p.name !== null; })) {
