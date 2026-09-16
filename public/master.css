@@ -1,0 +1,35 @@
+body {
+    background: #0a0a12; color: #e0e0e0; font-family: 'Segoe UI', monospace;
+    margin: 0; padding: 20px; display: flex; flex-direction: column; gap: 20px;
+}
+header {
+    background: #1a1a2e; padding: 15px 30px; border-bottom: 2px solid #e94560;
+    display: flex; justify-content: space-between; align-items: center;
+}
+h1 { margin: 0; color: #e94560; font-size: 24px; }
+.highlight { color: #0f3460; background: #e94560; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+.status-bar { font-size: 14px; }
+
+.card {
+    background: #16213e; border: 1px solid #0f3460; padding: 20px; border-radius: 8px;
+}
+.control-card { border-color: #e94560; box-shadow: 0 0 15px rgba(233, 69, 96, 0.2); }
+
+.btn-group { display: flex; gap: 10px; margin: 15px 0; }
+.btn-group button {
+    background: #0f3460; color: white; border: none; padding: 10px 25px;
+    font-size: 18px; cursor: pointer; border-radius: 4px; transition: 0.2s;
+}
+.btn-group button:hover, .btn-group button.active-btn { background: #e94560; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th, td { padding: 10px; text-align: left; border-bottom: 1px solid #0f3460; font-size: 14px; }
+th { background: #0f3460; color: #e94560; }
+
+.btn-advance {
+    background: #e94560; color: white; border: none; padding: 15px 30px;
+    font-size: 18px; font-weight: bold; cursor: pointer; width: 100%;
+    border-radius: 4px; margin-top: 15px; transition: 0.2s;
+}
+.btn-advance:hover { background: #ff2e63; transform: scale(1.01); }
+.btn-advance:disabled { background: #333; color: #666; cursor: not-allowed; transform: none; }

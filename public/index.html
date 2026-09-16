@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExoRival</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <div id="ui-waiting" class="screen active">
+        <h1>Ожидание игроков...</h1>
+        <p>Подключено: <span id="count">0/10</span></p>
+    </div>
+
+    <div id="ui-name" class="screen">
+        <h2>Введите ваше имя ученого:</h2>
+        <input type="text" id="name-input" maxlength="20" placeholder="Например: Dr. Smith">
+        <button onclick="submitName()">Подтвердить</button>
+        <p id="waiting-names" style="color:#66fcf1; margin-top:20px;"></p>
+    </div>
+
+    <div id="ui-draft" class="screen">
+        <h2>Драфт лабораторий</h2>
+        <p id="draft-status">Ожидание...</p>
+        <div id="draft-board" class="draft-layout"></div>
+    </div>
+
+    <!-- 🆕 Сводная таблица теперь показывается как отдельный экран ожидания -->
+    <div id="ui-summary" class="screen">
+        <h2>✅ Команды сформированы!</h2>
+        <div class="summary-layout"></div>
+        <p style="margin-top:20px; color:#66fcf1;">Ожидание команды от ведущего для начала Фазы 2...</p>
+    </div>
+
+    <div id="ui-scan" class="screen">
+        <div class="scan-header">
+            <div class="player-stats">
+                <h2>Разведка планет</h2>
+                <p>Роль: <strong id="scan-role"></strong> | Команда: <strong id="scan-team"></strong></p>
+                <p>⚡ Энергия: <strong id="scan-energy" class="stat-val"></strong> | 🔬 Наука: <strong id="scan-science" class="stat-val"></strong></p>
+            </div>
+            <div id="scan-status-msg" class="status-msg"></div>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="scan-table">
+                <thead id="scan-thead"></thead>
+                <tbody id="scan-tbody"></tbody>
+            </table>
+        </div>
+
+        <div id="vote-block" style="display:none;">
+            <h3>🗳️ Время голосовать за целевую планету!</h3>
+            <p>Выберите планету для высадки:</p>
+            <div id="vote-buttons" class="btn-group"></div>
+        </div>
+    </div>
+
+    <!-- 🆕 ЭКРАН ИТОГОВ ГОЛОСОВАНИЯ -->
+    <div id="ui-results" class="screen">
+        <h2>📊 Итоги разведки и голосования</h2>
+        <table id="results-table" border="1">
+            <thead>
+                <tr>
+                    <th>Команда</th>
+                    <th>Выбранная планета</th>
+                    <th>Голосов (вес)</th>
+                    <th>Кто голосовал</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <p style="margin-top:20px; color:#66fcf1;">Ожидание перехода к Фазе 3...</p>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>

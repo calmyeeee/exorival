@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExoRival - Панель Ведущего</title>
+    <link rel="stylesheet" href="master.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <header>
+        <h1>🎩 ПАНЕЛЬ ВЕДУЩЕГО</h1>
+        <div class="status-bar">
+            Фаза: <span id="current-phase" class="highlight">ОЖИДАНИЕ</span> |
+            Ведущих: <span id="masters-count">0</span>
+        </div>
+    </header>
+
+    <section id="setup-block" class="card active">
+        <h2>1. Настройка матча</h2>
+        <div style="display: flex; gap: 40px; flex-wrap: wrap;">
+            <div>
+                <p><strong>Количество команд:</strong></p>
+                <div class="btn-group" id="teams-btns">
+                    <button onclick="setTeams(2)" class="active-btn">2 Команды</button>
+                    <button onclick="setTeams(3)">3 Команды</button>
+                </div>
+            </div>
+            <div>
+                <p><strong>Количество игроков:</strong></p>
+                <div class="btn-group" id="players-btns"></div>
+            </div>
+            <div>
+                <p><strong>Количество планет:</strong></p>
+                <div class="btn-group" id="planets-btns">
+                    <button onclick="setPlanets(5)">5</button>
+                    <button onclick="setPlanets(6)" class="active-btn">6</button>
+                    <button onclick="setPlanets(7)">7</button>
+                    <button onclick="setPlanets(8)">8</button>
+                    <button onclick="setPlanets(9)">9</button>
+                    <button onclick="setPlanets(10)">10</button>
+                </div>
+            </div>
+        </div>
+        <p style="margin-top: 15px;">
+            Итог: <strong id="req-teams">2</strong> команды,
+            <strong id="req-count">10</strong> игроков,
+            <strong id="req-planets">6</strong> планет.
+        </p>
+    </section>
+
+    <section id="lobby-block" class="card">
+        <h2>2. Лобби (<span id="players-count">0</span>/<span id="max-count">10</span>)</h2>
+        <table id="players-table">
+            <thead>
+                <tr>
+                    <th>ID</th><th>Имя</th><th>Команда</th><th>Роль</th>
+                    <th>Энергия</th><th>Наука</th><th>Статус</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section id="control-block" class="card control-card">
+        <h2>3. Управление игрой</h2>
+        <p id="phase-desc">Ожидание подключения игроков...</p>
+        <button id="btn-next-phase" class="btn-advance" onclick="advancePhase()">
+            ▶️ ПЕРЕВЕСТИ НА СЛЕДУЮЩУЮ ФАЗУ
+        </button>
+    </section>
+
+    <script src="master.js"></script>
+</body>
+</html>
