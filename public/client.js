@@ -2,16 +2,21 @@
 const socket = io();
 
 socket.on('connect', function() {
+    console.log('Соединение установлено. Отправляю регистрацию ИГРОКА...');
     socket.emit('register', { type: 'PLAYER' });
 });
-socket.on('error_msg', function(msg) { alert(msg); });
+
+socket.on('error_msg', function(msg) {
+    alert(msg);
+});
+
 socket.on('disconnect', function(reason) {
     if (reason === 'io server disconnect') {
         document.body.innerHTML = '<h1 style="color:red;padding:50px;">Сервер отклонил подключение.</h1>';
     }
 });
 
-const screens = {
+var screens = {
     waiting: document.getElementById('ui-waiting'),
     name: document.getElementById('ui-name'),
     draft: document.getElementById('ui-draft'),
@@ -21,189 +26,413 @@ const screens = {
     landing: document.getElementById('ui-landing')
 };
 
-let mySocketId = null;
-let myNameSubmitted = false;
-let lastDescentRole = null;
+var mySocketId = null;
+var myNameSubmitted = false;
+var lastDescentRole = null;
 
-const rolesRu = {
-    'PILOT': '🚀 Пилот', 'ENGINEER': '🔧 Инженер',
-    'ASTRO': '🔭 Астрофизик', 'XENO': '🧬 Ксенобиолог', 'DIRECTOR': '💼 Директор'
+var rolesRu = {
+    'PILOT': 'Пилот',
+    'ENGINEER': 'Инженер',
+    'ASTRO': 'Астрофизик',
+    'XENO': 'Ксенобиолог',
+    'DIRECTOR': 'Директор'
 };
 
 function showScreen(name) {
-    Object.values(screens).forEach(function(s) { if (s) s.classList.remove('active'); });
+    Object.values(screens).forEach(function(s) {
+        if (s) s.classList.remove('active');
+    });
     if (screens[name]) screens[name].classList.add('active');
 }
 
 // --- ГЛАВНЫЙ ОБРАБОТЧИК ---
 socket.on('state_update', function(state) {
     mySocketId = state.mySocketId;
-    const pc = state.playersCount || 0;
-    const rp = state.requiredPlayers || 10;
-    const ce = document.getElementById('count');
-    if (ce) ce.innerText = pc + '/' + rp;
+    var playersCount = state.playersCount || 0;
+    var requiredPlayers = state.requiredPlayers || 10;
+    var countEl = document.getElementById('count');
+    if (countEl) countEl.innerText = playersCount + '/' + requiredPlayers;
 
-    if (state.isMaster) return;
+    if (state.isMaster) {
+        document.body.innerHTML = '<h1 style="color:red;padding:50px;">Откройте /master.html</h1>';
+        return;
+    }
 
     if (state.phase === 'WAITING') {
         lastDescentRole = null;
-        showScreen('waiting');
-        document.querySelector('#ui-waiting h1').innerText = pc < rp ? 'Ожидание игроков...' : 'Лобби заполнено. Ждем ведущего...';
+        handleWaiting(playersCount, requiredPlayers);
     } else if (state.phase === 'PHASE_1_ROLES') {
         lastDescentRole = null;
         handlePhase1(state);
     } else if (state.phase === 'PHASE_2_SCAN') {
         lastDescentRole = null;
-        if (state.votingFinished) { showScreen('results'); renderResults(state); }
-        else { showScreen('scan'); renderScanPhase(state); }
+        if (state.votingFinished) {
+            showScreen('results');
+            renderResults(state);
+        } else {
+            showScreen('scan');
+            renderScanPhase(state);
+        }
     } else if (state.phase === 'PHASE_3_DESCENT') {
         showScreen('landing');
         renderDescentPhase(state);
+    } else if (state.phase === 'PHASE_4_RECON' || state.phase === 'PHASE_5_END') {
+        lastDescentRole = null;
+        showScreen('waiting');
+        document.querySelector('#ui-waiting h1').innerText = 'Игра завершена!';
     } else {
         lastDescentRole = null;
         showScreen('waiting');
-        document.querySelector('#ui-waiting h1').innerText = '🏆 Игра завершена!';
+        document.querySelector('#ui-waiting h1').innerText = 'Фаза: ' + state.phase;
     }
 });
 
-// --- ФАЗА 1 ---
-function handlePhase1(state) {
-    const md = state.players[mySocketId];
-    if (!md) return;
-    const ap = Object.values(state.players);
-    const req = state.requiredPlayers || 10;
-    const en = ap.length >= req && ap.every(function(p) { return p.name !== null; });
-    const ep = ap.length >= req && ap.every(function(p) { return p.role !== null; });
+// --- ФАЗА ОЖИДАНИЯ ---
+function handleWaiting(current, max) {
+    showScreen('waiting');
+    var h1 = document.querySelector('#ui-waiting h1');
+    if (current < max) {
+        h1.innerText = 'Ожидание игроков...';
+    } else {
+        h1.innerText = 'Лобби заполнено. Ждем ведущего...';
+    }
+}
 
-    if (ep) { showScreen('summary'); renderSummary(state); return; }
-    if (state.turnQueue && state.turnQueue.length > 0 && !ep) { showScreen('draft'); renderDraft(state); return; }
-    if (!en) {
+// --- ФАЗА 1: ДРАФТ ---
+function handlePhase1(state) {
+    var myData = state.players[mySocketId];
+    if (!myData) return;
+    var allPlayers = Object.values(state.players);
+    var req = state.requiredPlayers || 10;
+    var everyoneNamed = allPlayers.length >= req && allPlayers.every(function(p) { return p.name !== null; });
+    var everyonePicked = allPlayers.length >= req && allPlayers.every(function(p) { return p.role !== null; });
+
+    if (everyonePicked) {
+        showScreen('summary');
+        renderSummary(state);
+        return;
+    }
+    if (state.turnQueue && state.turnQueue.length > 0 && !everyonePicked) {
+        showScreen('draft');
+        renderDraft(state);
+        return;
+    }
+    if (!everyoneNamed) {
         showScreen('name');
-        const nc = ap.filter(function(p) { return p.name !== null; }).length;
-        const wt = document.getElementById('waiting-names');
-        if (wt) wt.innerText = 'Ожидаем... (' + nc + '/' + req + ')';
-        const inp = document.getElementById('name-input');
-        const btn = document.querySelector('#ui-name button');
-        if (md.name === null && !myNameSubmitted) { if(inp)inp.disabled=false; if(btn)btn.disabled=false; }
-        else { if(inp)inp.disabled=true; if(btn)btn.disabled=true; }
+        var namedCount = allPlayers.filter(function(p) { return p.name !== null; }).length;
+        var waitText = document.getElementById('waiting-names');
+        if (waitText) waitText.innerText = 'Ожидаем... (' + namedCount + '/' + req + ')';
+        var input = document.getElementById('name-input');
+        var btn = document.querySelector('#ui-name button');
+        if (myData.name === null && !myNameSubmitted) {
+            if (input) input.disabled = false;
+            if (btn) btn.disabled = false;
+        } else {
+            if (input) input.disabled = true;
+            if (btn) btn.disabled = true;
+        }
     }
 }
 
 function renderDraft(state) {
-    const board = document.getElementById('draft-board');
-    const st = document.getElementById('draft-status');
-    if (!board || !st) return;
+    var board = document.getElementById('draft-board');
+    var statusText = document.getElementById('draft-status');
+    if (!board || !statusText) return;
     board.innerHTML = '';
-    const cts = state.turnQueue[state.currentTurnIndex];
-    const imt = cts === mySocketId;
-    const cpn = state.players[cts] ? state.players[cts].name : '???';
-    st.innerHTML = imt ? '<div class="my-turn-banner">⚠️ ВАША ОЧЕРЕДЬ!</div>' : '<p>Выбирает: <strong style="color:#66fcf1">' + cpn + '</strong></p>';
 
-    const tc = state.teamCounts || {};
-    const mts = state.maxTeamSize || 5;
-    for (let t = 0; t < state.requiredTeams; t++) {
-        const col = document.createElement('div'); col.className = 'team-column';
-        const tn = state.teams[t] ? state.teams[t].name : 'Команда ' + t;
-        const cc = tc[t] || 0;
-        col.innerHTML = '<h3>' + tn + ' (' + cc + '/' + mts + ')</h3>';
-        if (cc >= mts) { const w=document.createElement('div'); w.style.color='#e94560'; w.innerText='⛔ Заполнена'; col.appendChild(w); }
-        const tr = [];
-        Object.values(state.players).forEach(function(p){if(p.team===t)tr.push(p.role);});
-        ['PILOT','ENGINEER','ASTRO','XENO','DIRECTOR'].forEach(function(r){
-            const b=document.createElement('button'); b.className='role-btn'; let txt=rolesRu[r];
-            if(tr.indexOf(r)!==-1){b.classList.add('taken');b.disabled=true;let wn='???';Object.values(state.players).forEach(function(p){if(p.team===t&&p.role===r&&p.name)wn=p.name;});txt+=' ('+wn+')';}
-            else{b.disabled=!imt||cc>=mts;b.onclick=(function(ti,ro){return function(){window.pickRole(ti,ro);};})(t,r);}
-            b.innerText=txt;col.appendChild(b);
+    var currentTurnSocket = state.turnQueue[state.currentTurnIndex];
+    var isMyTurn = currentTurnSocket === mySocketId;
+    var currentPlayerName = '???';
+    if (state.players[currentTurnSocket] && state.players[currentTurnSocket].name) {
+        currentPlayerName = state.players[currentTurnSocket].name;
+    }
+
+    if (isMyTurn) {
+        statusText.innerHTML = '<div class="my-turn-banner">ВАША ОЧЕРЕДЬ! Выберите команду и роль</div>';
+    } else {
+        statusText.innerHTML = '<p>Сейчас выбирает: <strong style="color:#66fcf1">' + currentPlayerName + '</strong></p>';
+    }
+
+    var teamCounts = state.teamCounts || {};
+    var maxTeamSize = state.maxTeamSize || 5;
+    var reqTeams = state.requiredTeams || 2;
+
+    for (var tId = 0; tId < reqTeams; tId++) {
+        var col = document.createElement('div');
+        col.className = 'team-column';
+        var teamName = state.teams[tId] ? state.teams[tId].name : ('Команда ' + tId);
+        var currentCount = teamCounts[tId] || 0;
+        col.innerHTML = '<h3>' + teamName + ' (' + currentCount + '/' + maxTeamSize + ')</h3>';
+
+        var isTeamFull = currentCount >= maxTeamSize;
+        if (isTeamFull) {
+            var w = document.createElement('div');
+            w.style.color = '#e94560';
+            w.style.marginBottom = '10px';
+            w.style.fontSize = '12px';
+            w.innerText = 'Команда заполнена';
+            col.appendChild(w);
+        }
+
+        var takenRoles = [];
+        Object.values(state.players).forEach(function(p) {
+            if (p.team === tId) takenRoles.push(p.role);
+        });
+
+        var rolesList = ['PILOT', 'ENGINEER', 'ASTRO', 'XENO', 'DIRECTOR'];
+        rolesList.forEach(function(role) {
+            var btn = document.createElement('button');
+            btn.className = 'role-btn';
+            var btnText = rolesRu[role] || role;
+
+            if (takenRoles.indexOf(role) !== -1) {
+                btn.classList.add('taken');
+                btn.disabled = true;
+                var whoName = '???';
+                Object.values(state.players).forEach(function(p) {
+                    if (p.team === tId && p.role === role && p.name) whoName = p.name;
+                });
+                btnText += ' (' + whoName + ')';
+            } else {
+                btn.disabled = !isMyTurn || isTeamFull;
+                btn.onclick = (function(t, r) {
+                    return function() { window.pickRole(t, r); };
+                })(tId, role);
+            }
+            btn.innerText = btnText;
+            col.appendChild(btn);
         });
         board.appendChild(col);
     }
 }
 
 function renderSummary(state) {
-    const l=document.querySelector('.summary-layout'); if(!l)return; l.innerHTML='';
-    for(let t=0;t<state.requiredTeams;t++){
-        const c=document.createElement('div');c.className='team-card';
-        const h=document.createElement('h3');const s=document.createElement('span');s.innerText=state.teams[t]?state.teams[t].name:'Команда '+t;
-        const rb=document.createElement('button');rb.className='btn-small';rb.innerText='✏️';rb.onclick=(function(id){return function(){window.promptRenameTeam(id);};})(t);
-        h.appendChild(s);h.appendChild(rb);
-        const tb=document.createElement('table');const tbd=document.createElement('tbody');tb.appendChild(tbd);
-        c.appendChild(h);c.appendChild(tb);l.appendChild(c);
-        tbd.innerHTML='<tr><th>Имя</th><th>Роль</th></tr>';
-        Object.values(state.players).forEach(function(p){if(p.team===t){const r=document.createElement('tr');const n=document.createElement('td');n.innerText=p.name;const rl=document.createElement('td');rl.innerText=(rolesRu[p.role]||p.role).replace(/[^a-zA-Zа-яА-ЯЁё\s]/g,'').trim();r.appendChild(n);r.appendChild(rl);tbd.appendChild(r);}});
+    var layout = document.querySelector('.summary-layout');
+    if (!layout) return;
+    layout.innerHTML = '';
+    var reqTeams = state.requiredTeams || 2;
+
+    for (var tId = 0; tId < reqTeams; tId++) {
+        var card = document.createElement('div');
+        card.className = 'team-card';
+
+        var header = document.createElement('h3');
+        var nameSpan = document.createElement('span');
+        nameSpan.id = 'team' + tId + '-name';
+        nameSpan.innerText = state.teams[tId] ? state.teams[tId].name : ('Команда ' + tId);
+
+        var renameBtn = document.createElement('button');
+        renameBtn.className = 'btn-small';
+        renameBtn.innerText = '✏️';
+        renameBtn.onclick = (function(id) {
+            return function() { window.promptRenameTeam(id); };
+        })(tId);
+
+        header.appendChild(nameSpan);
+        header.appendChild(renameBtn);
+
+        var table = document.createElement('table');
+        table.id = 'team' + tId + '-table';
+        var tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+
+        card.appendChild(header);
+        card.appendChild(table);
+        layout.appendChild(card);
+
+        tbody.innerHTML = '<tr><th>Имя</th><th>Роль</th></tr>';
+        Object.values(state.players).forEach(function(p) {
+            if (p.team === tId) {
+                var tr = document.createElement('tr');
+                var tdN = document.createElement('td');
+                tdN.innerText = p.name;
+                var tdR = document.createElement('td');
+                var rn = rolesRu[p.role] || p.role;
+                tdR.innerText = rn;
+                tr.appendChild(tdN);
+                tr.appendChild(tdR);
+                tbody.appendChild(tr);
+            }
+        });
     }
 }
 
-// --- ФАЗА 2 ---
+// --- ФАЗА 2: РАЗВЕДКА ---
 function renderScanPhase(state) {
-    const md=state.players[mySocketId]; if(!md)return;
-    document.getElementById('scan-role').innerText=rolesRu[md.role]||md.role;
-    document.getElementById('scan-team').innerText=state.teams[md.team]?state.teams[md.team].name:'-';
-    const ee=document.getElementById('scan-energy');ee.innerText=md.energy;ee.style.color=md.energy<15?'#e94560':'#66fcf1';
-    document.getElementById('scan-science').innerText=md.science;
-    document.getElementById('scan-status-msg').innerText=state.votingStarted?'🗳️ ГОЛОСОВАНИЕ!':'Тратьте энергию на разведку';
-    const th=document.getElementById('scan-thead');const tb=document.getElementById('scan-tbody');th.innerHTML='';tb.innerHTML='';
-    const cs=state.scanCosts||{};const ns=state.paramNames||{};const ks=['diameter','mass','atmosphere','magneticField','water','biomarkers'];
-    const trh=document.createElement('tr');const thn=document.createElement('th');thn.innerText='Планета';trh.appendChild(thn);
-    ks.forEach(function(k){const t=document.createElement('th');t.innerHTML=(ns[k]||k)+'<span class="cost-label">'+(cs[k]||'?')+' ⚡</span>';trh.appendChild(t);});
-    th.appendChild(trh);
-    state.planets.forEach(function(pl){
-        const tr=document.createElement('tr');const td=document.createElement('td');td.innerText=pl.name;td.style.color='#66fcf1';tr.appendChild(td);
-        ks.forEach(function(k){
-            const t=document.createElement('td');
-            if(pl[k]!==undefined){t.className='cell-revealed';if(typeof pl[k]==='boolean')t.innerText=pl[k]?'✅ Да':'❌ Нет';else if(Array.isArray(pl[k]))t.innerText=pl[k].length>0?pl[k].join(', '):'Нет';else t.innerText=pl[k];}
-            else{t.className='cell-hidden';if(!state.votingStarted&&md.energy>=cs[k]){const b=document.createElement('button');b.className='scan-btn';b.innerText='Разведать (-'+cs[k]+'⚡)';b.onclick=(function(pid,pk){return function(){window.scanParam(pid,pk);};})(pl.id,k);t.appendChild(b);}else t.innerText='???';}
-            tr.appendChild(t);
-        });
-        tb.appendChild(tr);
+    var myData = state.players[mySocketId];
+    if (!myData) return;
+
+    document.getElementById('scan-role').innerText = rolesRu[myData.role] || myData.role;
+    document.getElementById('scan-team').innerText = state.teams[myData.team] ? state.teams[myData.team].name : '-';
+
+    var energyEl = document.getElementById('scan-energy');
+    energyEl.innerText = myData.energy;
+    energyEl.style.color = myData.energy < 15 ? '#e94560' : '#66fcf1';
+    document.getElementById('scan-science').innerText = myData.science;
+
+    var statusMsg = document.getElementById('scan-status-msg');
+    if (state.votingStarted) {
+        statusMsg.innerText = 'ЭНЕРГИЯ НА ИСХОДЕ! ГОЛОСОВАНИЕ!';
+    } else {
+        statusMsg.innerText = 'Тратьте энергию на разведку (мин. остаток 15)';
+    }
+
+    var thead = document.getElementById('scan-thead');
+    var tbody = document.getElementById('scan-tbody');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    var costs = state.scanCosts || {};
+    var names = state.paramNames || {};
+    var paramKeys = ['diameter', 'mass', 'atmosphere', 'magneticField', 'water', 'biomarkers'];
+
+    var trHead = document.createElement('tr');
+    var thName = document.createElement('th');
+    thName.innerText = 'Планета';
+    trHead.appendChild(thName);
+
+    paramKeys.forEach(function(key) {
+        var th = document.createElement('th');
+        th.innerHTML = (names[key] || key) + '<span class="cost-label">Цена: ' + (costs[key] || '?') + ' ⚡</span>';
+        trHead.appendChild(th);
     });
-    const vb=document.getElementById('vote-block');
-    if(state.votingStarted&&!state.votingFinished){vb.style.display='block';renderVoteButtons(state);}else{vb.style.display='none';}
+    thead.appendChild(trHead);
+
+    state.planets.forEach(function(planet) {
+        var tr = document.createElement('tr');
+        var tdName = document.createElement('td');
+        tdName.innerText = planet.name;
+        tdName.style.fontWeight = 'bold';
+        tdName.style.color = '#66fcf1';
+        tr.appendChild(tdName);
+
+        paramKeys.forEach(function(key) {
+            var td = document.createElement('td');
+            var isRevealed = planet[key] !== undefined;
+
+            if (isRevealed) {
+                td.className = 'cell-revealed';
+                if (typeof planet[key] === 'boolean') {
+                    td.innerText = planet[key] ? 'Да' : 'Нет';
+                } else if (Array.isArray(planet[key])) {
+                    td.innerText = planet[key].length > 0 ? planet[key].join(', ') : 'Нет';
+                } else {
+                    td.innerText = planet[key];
+                }
+            } else {
+                td.className = 'cell-hidden';
+                if (!state.votingStarted && myData.energy >= costs[key]) {
+                    var btn = document.createElement('button');
+                    btn.className = 'scan-btn';
+                    btn.innerText = 'Разведать (-' + costs[key] + '⚡)';
+                    btn.onclick = (function(pId, pKey) {
+                        return function() { window.scanParam(pId, pKey); };
+                    })(planet.id, key);
+                    td.appendChild(btn);
+                } else {
+                    td.innerText = '???';
+                }
+            }
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+
+    var voteBlock = document.getElementById('vote-block');
+    if (state.votingStarted && !state.votingFinished) {
+        voteBlock.style.display = 'block';
+        renderVoteButtons(state);
+    } else {
+        voteBlock.style.display = 'none';
+    }
 }
 
 function renderVoteButtons(state) {
-    const c=document.getElementById('vote-buttons');c.innerHTML='';const md=state.players[mySocketId];if(!md)return;
-    const mv=state.votes[md.team]||{};
-    if(mv[mySocketId]!==undefined){c.innerHTML='<p style="color:#4ecca3;font-size:18px;">✅ Вы проголосовали</p>';return;}
-    const w=md.role==='DIRECTOR'?2:1;c.innerHTML='<p style="color:#f9ed69">Вес голоса: '+w+'</p>';
-    state.planets.forEach(function(pl){const b=document.createElement('button');b.innerText=pl.name;b.onclick=(function(pid){return function(){window.votePlanet(pid);};})(pl.id);c.appendChild(b);});
+    var container = document.getElementById('vote-buttons');
+    container.innerHTML = '';
+    var myData = state.players[mySocketId];
+    if (!myData) return;
+
+    var myTeamVotes = state.votes[myData.team] || {};
+    var alreadyVoted = myTeamVotes[mySocketId] !== undefined;
+
+    if (alreadyVoted) {
+        var p = document.createElement('p');
+        p.innerText = 'Вы отдали свой голос. Ожидаем остальных...';
+        p.style.color = '#4ecca3';
+        p.style.fontSize = '18px';
+        container.appendChild(p);
+        return;
+    }
+
+    var voteWeight = myData.role === 'DIRECTOR' ? 2 : 1;
+    var info = document.createElement('p');
+    info.innerText = 'Ваш вес голоса: ' + voteWeight;
+    info.style.color = '#f9ed69';
+    container.appendChild(info);
+
+    state.planets.forEach(function(planet) {
+        var btn = document.createElement('button');
+        btn.innerText = planet.name;
+        btn.onclick = (function(pId) {
+            return function() { window.votePlanet(pId); };
+        })(planet.id);
+        container.appendChild(btn);
+    });
 }
 
 function renderResults(state) {
-    const tb=document.querySelector('#results-table tbody');if(!tb)return;tb.innerHTML='';
-    (state.voteResults||[]).forEach(function(r){const tr=document.createElement('tr');tr.innerHTML='<td style="color:#66fcf1">'+r.teamName+'</td><td style="color:#4ecca3">'+r.planetName+'</td><td>'+r.totalVotes+'</td><td>'+r.voters+'</td>';tb.appendChild(tr);});
+    var tbody = document.querySelector('#results-table tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    var results = state.voteResults || [];
+    results.forEach(function(r) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td style="color:#66fcf1;font-weight:bold;">' + r.teamName + '</td>' +
+            '<td style="color:#4ecca3;font-size:16px;">' + r.planetName + '</td>' +
+            '<td>' + r.totalVotes + '</td>' +
+            '<td style="font-size:12px;">' + r.voters + '</td>';
+        tbody.appendChild(tr);
+    });
 }
 
-
 // =====================================================================
-// 🆕 ФАЗА 3: СПУСК АППАРАТА (ПОЛНОСТЬЮ РАБОЧАЯ)
+// ФАЗА 3: СПУСК АППАРАТА (полностью переписана без несуществующих классов)
 // =====================================================================
 
 function renderDescentPhase(state) {
-    const md = state.players[mySocketId];
-    if (!md) return;
-    const ds = state.descentState;
+    var myData = state.players[mySocketId];
+    if (!myData) return;
+    var ds = state.descentState;
     if (!ds) return;
 
-    const container = document.getElementById('ui-landing');
+    var container = document.getElementById('ui-landing');
 
     // Строим UI только один раз при входе в фазу или смене роли
-    if (lastDescentRole !== md.role) {
-        lastDescentRole = md.role;
-        buildDescentUI(container, md, state);
+    if (lastDescentRole !== myData.role) {
+        lastDescentRole = myData.role;
+        buildDescentUI(container, myData, state);
     }
 
     // Обновляем HUD
-    const lvl = document.getElementById('desc-level');
-    const sts = document.getElementById('desc-status');
-    const tmr = document.getElementById('desc-time');
+    var lvl = document.getElementById('desc-level');
+    var sts = document.getElementById('desc-status');
+    var tmr = document.getElementById('desc-time');
 
     if (lvl) lvl.innerText = (ds.currentLine + 1) + ' / ' + ds.totalLines;
     if (tmr) tmr.innerText = Math.ceil(ds.timeLeft / 1000) + 'с';
 
     if (sts) {
-        if (ds.status === 'fail') { sts.innerText = '❌ ' + ds.reason; sts.style.color = '#e94560'; }
-        else if (ds.status === 'success') { sts.innerText = '✅ ПОСАДКА УСПЕШНА!'; sts.style.color = '#4ecca3'; }
-        else { sts.innerText = 'Спуск...'; sts.style.color = '#66fcf1'; }
+        if (ds.status === 'fail') {
+            sts.innerText = 'ПРОВАЛ: ' + ds.reason;
+            sts.style.color = '#e94560';
+        } else if (ds.status === 'success') {
+            sts.innerText = 'ПОСАДКА УСПЕШНА!';
+            sts.style.color = '#4ecca3';
+        } else {
+            sts.innerText = 'Спуск...';
+            sts.style.color = '#66fcf1';
+        }
     }
 
     drawCanvas(ds);
@@ -213,102 +442,212 @@ function buildDescentUI(container, myData, state) {
     container.innerHTML = '';
     container.className = 'screen active descent-container';
 
-    const teamName = state.teams[myData.team] ? state.teams[myData.team].name : '-';
+    var teamName = state.teams[myData.team] ? state.teams[myData.team].name : '-';
 
     // HUD
-    const hud = document.createElement('div');
+    var hud = document.createElement('div');
     hud.className = 'descent-hud';
-    hud.innerHTML = '<div><h2>🚀 Спуск аппарата</h2>' +
-        '<p>Роль: <strong>' + (rolesRu[myData.role]||myData.role) + '</strong> | Команда: <strong>' + teamName + '</strong></p>' +
+    hud.innerHTML = '<div><h2>Спуск аппарата</h2>' +
+        '<p>Роль: <strong>' + (rolesRu[myData.role] || myData.role) + '</strong> | Команда: <strong>' + teamName + '</strong></p>' +
         '<p>Уровень: <strong id="desc-level">1/30</strong> | Время: <strong id="desc-time">20с</strong></p></div>' +
         '<div id="desc-status" class="status-msg">Спуск...</div>';
     container.appendChild(hud);
 
     // Canvas
-    const canvas = document.createElement('canvas');
+    var canvas = document.createElement('canvas');
     canvas.id = 'desc-canvas';
     canvas.width = 600;
     canvas.height = 400;
     canvas.style.border = '2px solid #45a29e';
     canvas.style.background = '#000';
     canvas.style.borderRadius = '5px';
+    canvas.style.display = 'block';
+    canvas.style.margin = '20px auto';
     container.appendChild(canvas);
 
     // Управление по ролям
-    const ctrl = document.createElement('div');
+    var ctrl = document.createElement('div');
     ctrl.className = 'descent-controls';
     ctrl.id = 'desc-controls';
+    ctrl.style.textAlign = 'center';
+    ctrl.style.marginTop = '20px';
+    ctrl.style.display = 'flex';
+    ctrl.style.gap = '10px';
+    ctrl.style.justifyContent = 'center';
+    ctrl.style.flexWrap = 'wrap';
 
     if (myData.role === 'PILOT') {
-        ctrl.innerHTML =
-            '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;">' +
-            '<button class="scan-btn" onmousedown="sendD({x:0,y:-1})" onmouseup="sendD({x:0,y:0})" ontouchstart="sendD({x:0,y:-1})" ontouchend="sendD({x:0,y:0})">⬆ Вверх</button>' +
-            '<div style="display:flex;gap:10px;">' +
-            '<button class="scan-btn" onmousedown="sendD({x:-1,y:0})" onmouseup="sendD({x:0,y:0})" ontouchstart="sendD({x:-1,y:0})" ontouchend="sendD({x:0,y:0})">⬅ Влево</button>' +
-            '<button class="scan-btn" onmousedown="sendD({x:1,y:0})" onmouseup="sendD({x:0,y:0})" ontouchstart="sendD({x:1,y:0})" ontouchend="sendD({x:0,y:0})">➡ Вправо</button>' +
-            '</div></div>';
-    } else if (myData.role === 'ENGINEER') {
-        ctrl.innerHTML =
-            '<button class="scan-btn" onmousedown="sendD({boost:true})" onmouseup="sendD({boost:false})" ontouchstart="sendD({boost:true})" ontouchend="sendD({boost:false})">🔥 УСКОРЕНИЕ</button>' +
-            '<button class="scan-btn" onmousedown="sendD({stabilize:true})" onmouseup="sendD({stabilize:false})" ontouchstart="sendD({stabilize:true})" ontouchend="sendD({stabilize:false})">⚖️ СТАБИЛИЗАЦИЯ</button>';
-    } else if (myData.role === 'DIRECTOR') {
-        ctrl.innerHTML =
-            '<div style="text-align:center;"><p style="color:#e94560;font-size:12px;">Без печати стабильность падает на 50%!</p>' +
-            '<button class="scan-btn hold-btn" onmousedown="sendD({stampActive:true})" onmouseup="sendD({stampActive:false})" ontouchstart="sendD({stampActive:true})" ontouchend="sendD({stampActive:false})">🖋️ УДЕРЖИВАТЬ ПЕЧАТЬ</button></div>';
-    } else if (myData.role === 'ASTRO') {
-        ctrl.innerHTML =
-            '<button class="scan-btn hold-btn" onmousedown="sendD({focused:true})" onmouseup="sendD({focused:false})" ontouchstart="sendD({focused:true})" ontouchend="sendD({focused:false})">🔭 УДЕРЖИВАТЬ ФОКУС</button>';
-    } else if (myData.role === 'XENO') {
-        ctrl.innerHTML =
-            '<button class="scan-btn hold-btn" onmousedown="sendD({synced:true})" onmouseup="sendD({synced:false})" ontouchstart="sendD({synced:true})" ontouchend="sendD({synced:false})">🧬 СИНХРОНИЗАЦИЯ</button>';
-    }
+        var pilotWrap = document.createElement('div');
+        pilotWrap.style.display = 'flex';
+        pilotWrap.style.flexDirection = 'column';
+        pilotWrap.style.alignItems = 'center';
+        pilotWrap.style.gap = '5px';
 
-    container.appendChild(ctrl);
+        var btnUp = document.createElement('button');
+        btnUp.className = 'scan-btn';
+        btnUp.innerText = 'Вверх';
+        btnUp.onmousedown = function() { sendD({ x: 0, y: -1 }); };
+        btnUp.onmouseup = function() { sendD({ x: 0, y: 0 }); };
+        btnUp.ontouchstart = function(e) { e.preventDefault(); sendD({ x: 0, y: -1 }); };
+        btnUp.ontouchend = function(e) { e.preventDefault(); sendD({ x: 0, y: 0 }); };
 
-    // Клавиатура для пилота
-    if (myData.role === 'PILOT') {
+        var lrWrap = document.createElement('div');
+        lrWrap.style.display = 'flex';
+        lrWrap.style.gap = '10px';
+
+        var btnLeft = document.createElement('button');
+        btnLeft.className = 'scan-btn';
+        btnLeft.innerText = 'Влево';
+        btnLeft.onmousedown = function() { sendD({ x: -1, y: 0 }); };
+        btnLeft.onmouseup = function() { sendD({ x: 0, y: 0 }); };
+        btnLeft.ontouchstart = function(e) { e.preventDefault(); sendD({ x: -1, y: 0 }); };
+        btnLeft.ontouchend = function(e) { e.preventDefault(); sendD({ x: 0, y: 0 }); };
+
+        var btnRight = document.createElement('button');
+        btnRight.className = 'scan-btn';
+        btnRight.innerText = 'Вправо';
+        btnRight.onmousedown = function() { sendD({ x: 1, y: 0 }); };
+        btnRight.onmouseup = function() { sendD({ x: 0, y: 0 }); };
+        btnRight.ontouchstart = function(e) { e.preventDefault(); sendD({ x: 1, y: 0 }); };
+        btnRight.ontouchend = function(e) { e.preventDefault(); sendD({ x: 0, y: 0 }); };
+
+        lrWrap.appendChild(btnLeft);
+        lrWrap.appendChild(btnRight);
+        pilotWrap.appendChild(btnUp);
+        pilotWrap.appendChild(lrWrap);
+        ctrl.appendChild(pilotWrap);
+
+        // Клавиатура для пилота
         document.onkeydown = function(e) {
-            if (e.key === 'ArrowLeft') sendD({x:-1,y:0});
-            if (e.key === 'ArrowRight') sendD({x:1,y:0});
-            if (e.key === 'ArrowUp') sendD({x:0,y:-1});
+            if (e.key === 'ArrowLeft') sendD({ x: -1, y: 0 });
+            if (e.key === 'ArrowRight') sendD({ x: 1, y: 0 });
+            if (e.key === 'ArrowUp') sendD({ x: 0, y: -1 });
         };
         document.onkeyup = function(e) {
-            if (['ArrowLeft','ArrowRight','ArrowUp'].indexOf(e.key) !== -1) sendD({x:0,y:0});
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                sendD({ x: 0, y: 0 });
+            }
         };
+    } else if (myData.role === 'ENGINEER') {
+        var btnBoost = document.createElement('button');
+        btnBoost.className = 'scan-btn';
+        btnBoost.innerText = 'УСКОРЕНИЕ';
+        btnBoost.onmousedown = function() { sendD({ boost: true }); };
+        btnBoost.onmouseup = function() { sendD({ boost: false }); };
+        btnBoost.ontouchstart = function(e) { e.preventDefault(); sendD({ boost: true }); };
+        btnBoost.ontouchend = function(e) { e.preventDefault(); sendD({ boost: false }); };
+
+        var btnStab = document.createElement('button');
+        btnStab.className = 'scan-btn';
+        btnStab.innerText = 'СТАБИЛИЗАЦИЯ';
+        btnStab.onmousedown = function() { sendD({ stabilize: true }); };
+        btnStab.onmouseup = function() { sendD({ stabilize: false }); };
+        btnStab.ontouchstart = function(e) { e.preventDefault(); sendD({ stabilize: true }); };
+        btnStab.ontouchend = function(e) { e.preventDefault(); sendD({ stabilize: false }); };
+
+        ctrl.appendChild(btnBoost);
+        ctrl.appendChild(btnStab);
+        document.onkeydown = null;
+        document.onkeyup = null;
+    } else if (myData.role === 'DIRECTOR') {
+        var wrapDir = document.createElement('div');
+        wrapDir.style.textAlign = 'center';
+        var warnDir = document.createElement('p');
+        warnDir.style.color = '#e94560';
+        warnDir.style.fontSize = '12px';
+        warnDir.innerText = 'Без печати стабильность падает на 50%!';
+        var btnStamp = document.createElement('button');
+        btnStamp.className = 'scan-btn hold-btn';
+        btnStamp.innerText = 'УДЕРЖИВАТЬ ПЕЧАТЬ';
+        btnStamp.style.padding = '20px';
+        btnStamp.style.fontSize = '18px';
+        btnStamp.style.background = '#e94560';
+        btnStamp.style.color = 'white';
+        btnStamp.onmousedown = function() { sendD({ stampActive: true }); };
+        btnStamp.onmouseup = function() { sendD({ stampActive: false }); };
+        btnStamp.ontouchstart = function(e) { e.preventDefault(); sendD({ stampActive: true }); };
+        btnStamp.ontouchend = function(e) { e.preventDefault(); sendD({ stampActive: false }); };
+        wrapDir.appendChild(warnDir);
+        wrapDir.appendChild(btnStamp);
+        ctrl.appendChild(wrapDir);
+        document.onkeydown = null;
+        document.onkeyup = null;
+    } else if (myData.role === 'ASTRO') {
+        var btnFocus = document.createElement('button');
+        btnFocus.className = 'scan-btn hold-btn';
+        btnFocus.innerText = 'УДЕРЖИВАТЬ ФОКУС';
+        btnFocus.style.padding = '20px';
+        btnFocus.style.fontSize = '18px';
+        btnFocus.style.background = '#e94560';
+        btnFocus.style.color = 'white';
+        btnFocus.onmousedown = function() { sendD({ focused: true }); };
+        btnFocus.onmouseup = function() { sendD({ focused: false }); };
+        btnFocus.ontouchstart = function(e) { e.preventDefault(); sendD({ focused: true }); };
+        btnFocus.ontouchend = function(e) { e.preventDefault(); sendD({ focused: false }); };
+        ctrl.appendChild(btnFocus);
+        document.onkeydown = null;
+        document.onkeyup = null;
+    } else if (myData.role === 'XENO') {
+        var btnSync = document.createElement('button');
+        btnSync.className = 'scan-btn hold-btn';
+        btnSync.innerText = 'СИНХРОНИЗАЦИЯ';
+        btnSync.style.padding = '20px';
+        btnSync.style.fontSize = '18px';
+        btnSync.style.background = '#e94560';
+        btnSync.style.color = 'white';
+        btnSync.onmousedown = function() { sendD({ synced: true }); };
+        btnSync.onmouseup = function() { sendD({ synced: false }); };
+        btnSync.ontouchstart = function(e) { e.preventDefault(); sendD({ synced: true }); };
+        btnSync.ontouchend = function(e) { e.preventDefault(); sendD({ synced: false }); };
+        ctrl.appendChild(btnSync);
+        document.onkeydown = null;
+        document.onkeyup = null;
     } else {
         document.onkeydown = null;
         document.onkeyup = null;
     }
+
+    container.appendChild(ctrl);
 }
 
 function drawCanvas(ds) {
-    const canvas = document.getElementById('desc-canvas');
+    var canvas = document.getElementById('desc-canvas');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width;
+    var H = canvas.height;
 
     ctx.fillStyle = '#0b0c10';
     ctx.fillRect(0, 0, W, H);
 
     if (ds.status === 'fail') {
-        ctx.fillStyle = '#e94560'; ctx.font = '30px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('КРУШЕНИЕ!', W/2, H/2); return;
+        ctx.fillStyle = '#e94560';
+        ctx.font = '30px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('КРУШЕНИЕ!', W / 2, H / 2);
+        return;
     }
     if (ds.status === 'success') {
-        ctx.fillStyle = '#4ecca3'; ctx.font = '30px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('ПОСАДКА УСПЕШНА!', W/2, H/2); return;
+        ctx.fillStyle = '#4ecca3';
+        ctx.font = '30px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('ПОСАДКА УСПЕШНА!', W / 2, H / 2);
+        return;
     }
 
     // Препятствия
-    (ds.obstacles || []).forEach(function(o) {
+    var obstacles = ds.obstacles || [];
+    obstacles.forEach(function(o) {
         ctx.fillStyle = o.type === 'moving' ? '#e94560' : '#1f2833';
-        const ox = (o.x / 100) * W;
-        const ow = (o.width / 100) * W;
+        var ox = (o.x / 100) * W;
+        var ow = (o.width / 100) * W;
         if (o.type === 'static') {
-            ctx.fillRect(ox, (o.yStart/100)*H, ow, ((o.yEnd-o.yStart)/100)*H);
+            var oy1 = (o.yStart / 100) * H;
+            var oy2 = (o.yEnd / 100) * H;
+            ctx.fillRect(ox, oy1, ow, oy2 - oy1);
         } else {
-            ctx.fillRect(ox, (o.y/100)*H - 10, ow, 20);
+            var oy = (o.y / 100) * H;
+            ctx.fillRect(ox, oy - 10, ow, 20);
         }
     });
 
@@ -316,20 +655,24 @@ function drawCanvas(ds) {
     if (ds.targetPosition) {
         ctx.fillStyle = '#f9ed69';
         ctx.beginPath();
-        ctx.arc((ds.targetPosition.x/100)*W, H-30, 15, 0, Math.PI*2);
+        ctx.arc((ds.targetPosition.x / 100) * W, H - 30, 15, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#000'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('ЦЕЛЬ', (ds.targetPosition.x/100)*W, H-27);
+        ctx.fillStyle = '#000';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('ЦЕЛЬ', (ds.targetPosition.x / 100) * W, H - 27);
     }
 
     // Корабль
     if (ds.shipPosition) {
         ctx.fillStyle = '#66fcf1';
-        const sx = (ds.shipPosition.x/100)*W;
-        const sy = (ds.shipPosition.y/100)*H;
-        ctx.fillRect(sx-10, sy-10, 20, 20);
-        ctx.fillStyle = '#000'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('▼', sx, sy+4);
+        var sx = (ds.shipPosition.x / 100) * W;
+        var sy = (ds.shipPosition.y / 100) * H;
+        ctx.fillRect(sx - 10, sy - 10, 20, 20);
+        ctx.fillStyle = '#000';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('▼', sx, sy + 4);
     }
 }
 
@@ -338,13 +681,35 @@ window.sendD = function(data) {
     socket.emit('action', data);
 };
 
-
 // --- ОБЩИЕ ДЕЙСТВИЯ ---
 window.submitName = function() {
-    const i=document.getElementById('name-input');if(!i)return;const n=i.value.trim();
-    if(n.length>0){socket.emit('action',{type:'SET_NAME',name:n});myNameSubmitted=true;i.disabled=true;const b=document.querySelector('#ui-name button');if(b)b.disabled=true;}
+    var input = document.getElementById('name-input');
+    if (!input) return;
+    var name = input.value.trim();
+    if (name.length > 0) {
+        socket.emit('action', { type: 'SET_NAME', name: name });
+        myNameSubmitted = true;
+        input.disabled = true;
+        var btn = document.querySelector('#ui-name button');
+        if (btn) btn.disabled = true;
+    }
 };
-window.pickRole = function(t,r){socket.emit('action',{type:'SELECT_ROLE',teamId:t,role:r});};
-window.promptRenameTeam = function(t){const n=prompt('Новое название:');if(n&&n.trim().length>0)socket.emit('action',{type:'RENAME_TEAM',teamId:t,newName:n.trim()});};
-window.scanParam = function(pid,pk){socket.emit('action',{type:'SCAN_PARAM',planetId:pid,paramKey:pk});};
-window.votePlanet = function(pid){socket.emit('action',{type:'VOTE_PLANET',planetId:pid});};
+
+window.pickRole = function(teamId, role) {
+    socket.emit('action', { type: 'SELECT_ROLE', teamId: teamId, role: role });
+};
+
+window.promptRenameTeam = function(teamId) {
+    var newName = prompt('Введите новое название лаборатории:');
+    if (newName && newName.trim().length > 0) {
+        socket.emit('action', { type: 'RENAME_TEAM', teamId: teamId, newName: newName.trim() });
+    }
+};
+
+window.scanParam = function(planetId, paramKey) {
+    socket.emit('action', { type: 'SCAN_PARAM', planetId: planetId, paramKey: paramKey });
+};
+
+window.votePlanet = function(planetId) {
+    socket.emit('action', { type: 'VOTE_PLANET', planetId: planetId });
+};
