@@ -1,6 +1,7 @@
 // room.js
 const Phase1 = require('./handlers/phase1_roles');
 const Phase2 = require('./handlers/phase2_scan');
+const Phase3Descent = require('./handlers/phase3_descent');
 
 class GameRoom {
     constructor() {
@@ -42,12 +43,28 @@ class GameRoom {
     }
 
     removeSocket(socketId) {
-        this.sockets.delete(socketId);
+        const wasPlayer = !!this.state.players[socketId];
+        const wasMaster = !!this.state.masters[socketId];
+        
         if (this.state.masters[socketId]) delete this.state.masters[socketId];
         if (this.state.players[socketId]) delete this.state.players[socketId];
 
         const totalConnections = Object.keys(this.state.players).length + Object.keys(this.state.masters).length;
         if (totalConnections === 0) this.reset();
+        
+        // Проблема 2: Обработка отключения игрока в середине игры
+        if (wasPlayer && this.state.phase !== 'WAITING' && this.state.phase !== 'PHASE_1_ROLES') {
+            console.log('Игрок отключился во время игры, помечаем как "Отключен"');
+            // Восстанавливаем запись для отображения статуса
+            this.state.players[socketId] = {
+                name: 'Отключившийся игрок',
+                team: null,
+                role: null,
+                energy: 0,
+                science: 0,
+                status: '❌ Отключен'
+            };
+        }
     }
 
     reset() {
@@ -116,12 +133,14 @@ class GameRoom {
                 Phase2.initPhase2(this.state);
                 break;
             case 'PHASE_2_SCAN':
-                this.state.phase = 'PHASE_3_PREP';
+                // Переход к фазе 3: Спуск аппарата
+                Phase3Descent.initPhase3(this.state);
                 break;
-            case 'PHASE_3_PREP':
-                this.state.phase = 'PHASE_4_LANDING';
+            case 'PHASE_3_DESCENT':
+                // После завершения спуска переходим к следующей фазе
+                this.state.phase = 'PHASE_4_RECON';
                 break;
-            case 'PHASE_4_LANDING':
+            case 'PHASE_4_RECON':
                 this.state.phase = 'PHASE_5_END';
                 break;
             default: return false;
@@ -140,11 +159,26 @@ class GameRoom {
         return true;
     }
 
+    // Проблема 3: Валидация имён
+    validatePlayerName(name) {
+        if (!name || typeof name !== 'string') return false;
+        const trimmed = name.trim();
+        if (trimmed.length < 2 || trimmed.length > 20) return false;
+        // Разрешаем только буквы, цифры, пробелы и базовые символы
+        const validPattern = /^[a-zA-Zа-яА-ЯЁё0-9\s_-]+$/;
+        return validPattern.test(trimmed);
+    }
+
     handlePlayerAction(socketId, msg) {
         if (this.state.phase === 'PHASE_1_ROLES') {
             if (msg.type === 'SET_NAME') {
                 if (this.state.players[socketId]) {
-                    this.state.players[socketId].name = msg.name.substring(0, 20);
+                    // Проблема 3: Валидация имени перед сохранением
+                    if (!this.validatePlayerName(msg.name)) {
+                        this.sockets.get(socketId).emit('error_msg', 'Некорректное имя. Используйте 2-20 символов (буквы, цифры, пробелы, _ -)');
+                        return;
+                    }
+                    this.state.players[socketId].name = msg.name.trim().substring(0, 20);
                     this.state.players[socketId].status = 'Готов';
                     const players = Object.values(this.state.players);
                     if (players.length >= this.state.requiredPlayers && players.every(function(p) { return p.name !== null; })) {
@@ -165,6 +199,12 @@ class GameRoom {
                 Phase2.voteForPlanet(this.state, socketId, msg.planetId);
             }
         }
+
+        if (this.state.phase === 'PHASE_3_DESCENT') {
+            if (msg.type === 'DESCENT_ACTION') {
+                Phase3Descent.handleDescentAction(this.state, socketId, msg);
+            }
+        }
     }
 
     broadcast() {
@@ -181,7 +221,7 @@ class GameRoom {
             const myTeam = playerData ? playerData.team : null;
 
             let maskedPlanets = [];
-            if (this.state.phase === 'PHASE_2_SCAN' || this.state.phase === 'PHASE_3_PREP' || this.state.phase === 'PHASE_4_LANDING' || this.state.phase === 'PHASE_5_END') {
+            if (this.state.phase === 'PHASE_2_SCAN' || this.state.phase === 'PHASE_3_DESCENT' || this.state.phase === 'PHASE_4_RECON' || this.state.phase === 'PHASE_5_END') {
                 maskedPlanets = this.getMaskedPlanets(myTeam);
             }
 
@@ -194,7 +234,8 @@ class GameRoom {
                 teamCounts: teamCounts,
                 maxTeamSize: maxTeamSize,
                 scanCosts: Phase2.SCAN_COSTS,
-                paramNames: Phase2.PARAM_NAMES
+                paramNames: Phase2.PARAM_NAMES,
+                descentState: this.state.phase === 'PHASE_3_DESCENT' ? Phase3Descent.getTeamDescentState(myTeam) : null
             };
 
             if (isMaster) {

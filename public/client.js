@@ -21,7 +21,8 @@ const screens = {
     draft: document.getElementById('ui-draft'),
     summary: document.getElementById('ui-summary'),
     scan: document.getElementById('ui-scan'),
-    results: document.getElementById('ui-results')
+    results: document.getElementById('ui-results'),
+    landing: document.getElementById('ui-landing')
 };
 
 let mySocketId = null;
@@ -67,6 +68,14 @@ socket.on('state_update', function(state) {
             showScreen('scan');
             renderScanPhase(state);
         }
+    }
+    else if (state.phase === 'PHASE_3_DESCENT') {
+        showScreen('landing');
+        initDescentGame(state);
+    }
+    else if (state.phase === 'PHASE_4_RECON' || state.phase === 'PHASE_5_END') {
+        showScreen('waiting');
+        document.querySelector('#ui-waiting h1').innerText = '🏆 Игра завершена!';
     }
     else {
         showScreen('waiting');
@@ -359,7 +368,12 @@ window.submitName = function() {
     if (!input) return;
     const name = input.value.trim();
     if (name.length > 0) {
-        socket.emit('action', { type: 'SET_NAME', name: name });
+        // Проблема 4: XSS-защита - экранирование имени на клиенте перед отправкой
+        const safeName = name.replace(/[<>"'&]/g, function(char) {
+            var entities = {'<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;'};
+            return entities[char];
+        });
+        socket.emit('action', { type: 'SET_NAME', name: safeName });
         myNameSubmitted = true;
         input.disabled = true;
         const btn = document.querySelector('#ui-name button');
@@ -374,7 +388,12 @@ window.pickRole = function(teamId, role) {
 window.promptRenameTeam = function(teamId) {
     const newName = prompt('Введите новое название лаборатории:');
     if (newName && newName.trim().length > 0) {
-        socket.emit('action', { type: 'RENAME_TEAM', teamId: teamId, newName: newName.trim() });
+        // Проблема 4: XSS-защита для названия команды
+        const safeName = newName.trim().replace(/[<>"'&]/g, function(char) {
+            var entities = {'<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;'};
+            return entities[char];
+        });
+        socket.emit('action', { type: 'RENAME_TEAM', teamId: teamId, newName: safeName });
     }
 };
 
@@ -385,3 +404,64 @@ window.scanParam = function(planetId, paramKey) {
 window.votePlanet = function(planetId) {
     socket.emit('action', { type: 'VOTE_PLANET', planetId: planetId });
 };
+
+// --- ФАЗА 4: СПУСК АППАРАТА ---
+
+let descentGameInstance = null;
+
+function initDescentGame(state) {
+    const player = state.players[mySocketId];
+    if (!player) return;
+    
+    // Обновляем информацию о роли и команде
+    document.getElementById('landing-role').innerText = rolesRu[player.role] || player.role;
+    document.getElementById('landing-team').innerText = state.teams[player.team]?.name || 'Команда ' + (player.team + 1);
+    
+    // Инициализируем игру только один раз
+    if (!descentGameInstance) {
+        const canvas = document.getElementById('landing-canvas');
+        
+        // Выбираем класс игры в зависимости от роли
+        let GameClass = LandingGame;
+        switch (player.role) {
+            case 'PILOT':
+                GameClass = PilotGame;
+                break;
+            case 'DIRECTOR':
+                GameClass = DirectorGame;
+                break;
+            case 'ENGINEER':
+                GameClass = EngineerGame;
+                break;
+            case 'ASTRO':
+                GameClass = AstrophysicistGame;
+                break;
+            case 'XENO':
+                GameClass = XenobiologistGame;
+                break;
+        }
+        
+        descentGameInstance = new GameClass('landing-canvas', player.role, socket);
+        
+        // Обработчик сообщений от сервера о начале уровня
+        socket.on('descent:level_start', function(data) {
+            if (descentGameInstance) {
+                descentGameInstance.startLevel(data.level, data.obstacles, data.targetStartX);
+                updateLandingUI(data.level + 1, 30);
+            }
+        });
+    }
+}
+
+function updateLandingUI(level, total) {
+    document.getElementById('landing-level').innerText = level + '/' + total;
+}
+
+// Обработка результатов мини-игры
+socket.on('descent:result', function(data) {
+    const statusEl = document.getElementById('landing-status');
+    if (statusEl) {
+        statusEl.innerText = data.success ? '✅ Успех!' : '❌ Провал: ' + data.reason;
+        statusEl.style.color = data.success ? '#0f0' : '#f00';
+    }
+});

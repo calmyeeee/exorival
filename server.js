@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const GameRoom = require('./room');
+const Phase4Landing = require('./handlers/phase4_landing');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,11 +39,21 @@ io.on('connection', function(socket) {
             if (msg.type === 'SET_REQUIRED_TEAMS') room.setRequiredTeams(socket.id, msg.count);
             if (msg.type === 'SET_REQUIRED_PLAYERS') room.setRequiredPlayers(socket.id, msg.count);
             if (msg.type === 'SET_PLANET_COUNT') room.setPlanetCount(socket.id, msg.count);
-            if (msg.type === 'ADVANCE_PHASE') room.advancePhase(socket.id);
+            if (msg.type === 'ADVANCE_PHASE') {
+                room.advancePhase(socket.id);
+            }
         } else if (room.state.players[socket.id]) {
             room.handlePlayerAction(socket.id, msg);
         }
         room.broadcast();
+    });
+
+    // Обработка действий мини-игры спуска (Фаза 3)
+    socket.on('descent:action', function(action) {
+        if (room.state.phase === 'PHASE_3_DESCENT' && room.state.players[socket.id]) {
+            Phase4Landing.handleDescentAction(room.state, socket.id, action);
+            room.broadcast();
+        }
     });
 
     socket.on('disconnect', function() {

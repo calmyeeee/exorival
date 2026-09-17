@@ -75,6 +75,25 @@
         <p style="margin-top:20px; color:#66fcf1;">Ожидание перехода к Фазе 3...</p>
     </div>
 
+    <!-- 🆕 ЭКРАН СПУСКА АППАРАТА (ФАЗА 4) -->
+    <div id="ui-landing" class="screen">
+        <div class="landing-header">
+            <h2>🚀 Спуск аппарата на планету</h2>
+            <p>Роль: <strong id="landing-role"></strong> | Команда: <strong id="landing-team"></strong></p>
+            <p>Уровень: <span id="landing-level">1/30</span> | Время: <span id="landing-time">20c</span></p>
+        </div>
+        <div class="game-container">
+            <canvas id="landing-canvas"></canvas>
+        </div>
+        <div id="landing-status" class="status-msg"></div>
+    </div>
+
+    <script src="js/landing-game.js"></script>
+    <script src="js/landing-pilot.js"></script>
+    <script src="js/landing-director.js"></script>
+    <script src="js/landing-engineer.js"></script>
+    <script src="js/landing-astrophysicist.js"></script>
+    <script src="js/landing-xenobiologist.js"></script>
     <script src="client.js"></script>
 </body>
 </html>
