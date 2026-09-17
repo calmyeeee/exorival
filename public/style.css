@@ -30,6 +30,10 @@ td, th { padding: 8px; text-align: left; border-bottom: 1px solid #1f2833; }
 #scan-table { min-width: 800px; }
 #scan-table th { background: #1f2833; color: #66fcf1; position: sticky; top: 0; }
 #scan-table td { text-align: center; vertical-align: middle; }
+<<<<<<< HEAD
+=======
+
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6
 .scan-btn { padding: 6px 10px; font-size: 12px; background: #0f3460; color: #c5c6c7; border: 1px solid #45a29e; }
 .scan-btn:hover:not(:disabled) { background: #45a29e; color: #0b0c10; }
 .scan-btn:disabled { border-color: #1f2833; color: #333; cursor: not-allowed; }
@@ -41,10 +45,15 @@ td, th { padding: 8px; text-align: left; border-bottom: 1px solid #1f2833; }
 #vote-buttons { justify-content: center; margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px; }
 #vote-buttons button { font-size: 16px; padding: 15px 25px; }
 
+<<<<<<< HEAD
+=======
+/* 🆕 Стили статусов */
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6
 .status-ready { color: #4ecca3; }
 .status-voting { color: #f9ed69; animation: blink 1s infinite; }
 .status-voted { color: #66fcf1; }
 @keyframes blink { 50% { opacity: 0.5; } }
+<<<<<<< HEAD
 #results-table th { background: #1f2833; color: #66fcf1; }
 #results-table td { text-align: center; padding: 12px; }
 
@@ -55,3 +64,8 @@ td, th { padding: 8px; text-align: left; border-bottom: 1px solid #1f2833; }
 .descent-controls button { padding: 15px 25px; font-size: 16px; user-select: none; }
 .hold-btn { background: #e94560 !important; color: white !important; }
 .hold-btn:active { background: #66fcf1 !important; color: #0b0c10 !important; }
+=======
+
+#results-table th { background: #1f2833; color: #66fcf1; }
+#results-table td { text-align: center; padding: 12px; }
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ```
 # Dependencies
 node_modules/
@@ -61,3 +62,6 @@ htmlcov/
 *.tar.xz
 *.tar.zst
 ```
+=======
+node_modules/
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6

@@ -33,14 +33,20 @@ io.on('connection', function(socket) {
         room.broadcast();
     });
 
+<<<<<<< HEAD
     // Единый обработчик всех действий
+=======
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6
     socket.on('action', function(msg) {
         if (room.state.masters[socket.id]) {
             if (msg.type === 'SET_REQUIRED_TEAMS') room.setRequiredTeams(socket.id, msg.count);
             if (msg.type === 'SET_REQUIRED_PLAYERS') room.setRequiredPlayers(socket.id, msg.count);
             if (msg.type === 'SET_PLANET_COUNT') room.setPlanetCount(socket.id, msg.count);
             if (msg.type === 'ADVANCE_PHASE') room.advancePhase(socket.id);
+<<<<<<< HEAD
             if (msg.type === 'RESTART_PHASE_3') room.restartPhase3(socket.id);
+=======
+>>>>>>> b4437aeeb3cfd6269ddaa6797b9f6ca04061d3d6
         } else if (room.state.players[socket.id]) {
             room.handlePlayerAction(socket.id, msg);
         }
